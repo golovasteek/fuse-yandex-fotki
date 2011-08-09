@@ -140,8 +140,7 @@ class NullFS(Fuse):
     def read ( self, path, length, offset ):
         print '*** read', path, length, offset
         #return -errno.ENOSYS
-	data = self.struct.ReadFile(path.split('/'))
-	return data[offset:length+offset]
+	return self.struct.ReadFile(path.split('/'), length, offset)
 
     def readlink ( self, path ):
         print '*** readlink', path

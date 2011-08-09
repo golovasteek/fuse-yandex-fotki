@@ -3,12 +3,16 @@ import feedparser
 import exceptions
 import errno
 import urllib2
+import os
+import tempfile
 
 class TreeEntry:
 	def __init__(self, link, filetype):
 		self.link = None
-		self.filetype = filetype
+		self.fileType = filetype
+		self.size = 0
 		self.fileLink = None
+		self.localFile = None
 		self.Children = {}
 
 class AlbumStruct:
@@ -85,55 +89,44 @@ class AlbumStruct:
 			print "%s" % (item)
 		print 'Tree'
 		print self.Tree
+
+	def _getEntry(self, path):
+		entry = self.Tree
+		for element in path:
+			if element:
+				if element not in entry.Children.keys():
+					raise exceptions.OSError(errno.ENOENT, "No such file or directory", '/'.join(map(str, path)))
+				entry = entry.Children[element]
+		return entry
 	
 	def Dir(self, path):
-		Children = self.Tree.Children
-		for element in path:
-			if element:
-				if element not in Children.keys():
-					raise exceptions.OSError(errno.ENOENT, "No such file or directory", '/'.join(map(str, path)))
-				Children = Children[element].Children
-		return Children.keys()
+		return self._getEntry(path).Children.keys()
 
 	def FileType(self, path):
-		result = self.Tree.filetype 
-		Children = self.Tree.Children
-		for element in path:
-			if element:
-				if element not in Children.keys():
-					raise exceptions.OSError(errno.ENOENT, "No such file or directory", '/'.join(map(str, path)))
-				result = Children[element].filetype
-				Children = Children[element].Children
-		return result
+		return self._getEntry(path).fileType
 
-	def ReadFile(self, path):
-		link = self.Tree.fileLink 
-		Children = self.Tree.Children
-		print path
-		for element in path:
-			print element
-			if element:
-				if element not in Children.keys():
-					raise exceptions.OSError(errno.ENOENT, "No such file or directory", '/'.join(map(str, path)))
-				link = Children[element].fileLink
-				Children = Children[element].Children
-		if not link:
-			raise exceptions.OSError(errno.ENOENT, "No such file or directory", '/'.join(map(str, path)))
-		u = urllib2.urlopen(link)
-		return u.read() 
+	def ReadFile(self, path, size, offset):
+		entry = self._getEntry(path)
+		if not entry.localFile:
+			if entry.fileType == 'album':
+				raise exceptions.OSError(errno.EISDIR, "File is directory", '/'.join(map(str, path)))
+			u = urllib2.urlopen(entry.fileLink)
+			content = u.read()
+			f = tempfile.mkstemp()
+			os.write(f[0], content)
+			os.close(f[0])
+			entry.localFile = f[1] 
+		
+		fd = os.open(entry.localFile, os.O_RDONLY)
+		os.lseek(fd, offset, os.SEEK_SET)
+		result = os.read(fd, size)
+		os.close(fd)
+		return result
 		
 	def GetFileSize(self, path):
-		link = self.Tree.fileLink 
-		Children = self.Tree.Children
-		print path
-		for element in path:
-			print element
-			if element:
-				if element not in Children.keys():
-					return 0
-				link = Children[element].fileLink
-				Children = Children[element].Children
-		if not link:
-			return 0
-		u = urllib2.urlopen(link)
-		return int(u.info().getheader('Content-Length'))
+		entry = self._getEntry(path)
+
+		if entry.fileType == 'photo' and entry.size == 0:
+			u = urllib2.urlopen(entry.fileLink)
+			entry.size = int(u.info().getheader('Content-Length'))
+		return entry.size
