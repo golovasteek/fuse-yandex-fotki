@@ -14,11 +14,6 @@ import yaapi
 
 fuse.fuse_python_api = (0, 2)
 
-def log(message):
-        l = open("./log",'a')
-        l.write(message+'\n')
-        l.close()
-
 def dirFromList(list):
     """
     Return a properly formatted list of items suitable to a directory listing.
