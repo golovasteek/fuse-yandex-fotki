@@ -159,9 +159,9 @@ class NullFS(Fuse):
         print '*** rmdir', path
         return -errno.ENOSYS
 
-    def statfs ( self ):
-        print '*** statfs'
-        return -errno.ENOSYS
+#    def statfs ( self ):
+#        print '*** statfs'
+#        return -errno.ENOSYS
 
     def symlink ( self, targetPath, linkPath ):
         print '*** symlink', targetPath, linkPath
