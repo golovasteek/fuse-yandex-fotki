@@ -1,10 +1,14 @@
 #!/usr/bin/python
+
+import oauth
+
 import feedparser
 import exceptions
 import errno
 import urllib2
 import os
 import tempfile
+
 
 class TreeEntry:
 	def __init__(self, link, filetype):
@@ -22,12 +26,23 @@ class AlbumStruct:
 		self.Entries = {}
 		self.Links = {}
 		self.Tree = TreeEntry(None, 'album')
-		self.fetchData('golovasteek')
+		if oauth.Token:
+			self.AuthHeader = {'Authorization': 'OAuth ' + oauth.Token}
+		else:
+			self.AuthHeader = {}
+		self.BaseUrl = "http://api-fotki.yandex.ru/api"
+#		self.BaseUrl = "http://localhost"
+		self.UserName = oauth.UserName
+
+		self.fetchData()
 		self.growTree()
 
-	def fetchData(self, UserName):
-		AlbumCollection = feedparser.parse("http://api-fotki.yandex.ru/api/users/%s/albums/" % UserName)
-		PhotoCollection = feedparser.parse("http://api-fotki.yandex.ru/api/users/%s/photos/" % UserName)
+	def urlopen_(self, url):
+		return urllib2.urlopen(urllib2.Request(url, None, self.AuthHeader))
+
+	def fetchData(self):
+		AlbumCollection = feedparser.parse(self.BaseUrl + "/users/%s/albums/" % self.UserName, request_headers = self.AuthHeader)
+		PhotoCollection = feedparser.parse(self.BaseUrl + "/users/%s/photos/" % self.UserName, request_headers = self.AuthHeader)
 		for album in AlbumCollection.entries:
 			AlbumLink = None
 			for link in album.links:
@@ -110,7 +125,7 @@ class AlbumStruct:
 		if not entry.localFile:
 			if entry.fileType == 'album':
 				raise exceptions.OSError(errno.EISDIR, "File is directory", '/'.join(map(str, path)))
-			u = urllib2.urlopen(entry.fileLink)
+			u = self.urlopen_(entry.fileLink)
 			content = u.read()
 			f = tempfile.mkstemp()
 			os.write(f[0], content)
@@ -127,6 +142,6 @@ class AlbumStruct:
 		entry = self._getEntry(path)
 
 		if entry.fileType == 'photo' and entry.size == 0:
-			u = urllib2.urlopen(entry.fileLink)
+			u = self.urlopen_(entry.fileLink)
 			entry.size = int(u.info().getheader('Content-Length'))
 		return entry.size
