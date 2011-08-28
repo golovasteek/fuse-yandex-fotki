@@ -4,7 +4,6 @@ This programm is not instalable now.
 To run this programm next python modules needed:
 not standart:
     fuse
-    feedparser (version >= 5)
     lxml
     urllib2
 

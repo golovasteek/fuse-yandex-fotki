@@ -2,7 +2,6 @@
 
 import oauth
 
-import feedparser
 from lxml import etree
 import exceptions
 import errno
@@ -19,6 +18,13 @@ class TreeEntry:
         self.fileLink = None
         self.localFile = None
         self.Children = {}
+
+class CollectionEntry:
+    def __init__(self, title, filetype, photolink = None):
+        self.title = title
+        self.filetype = filetype
+        self.fileLink = photolink
+        
 
 class AlbumStruct:
     def __init__(self):
@@ -41,47 +47,43 @@ class AlbumStruct:
 
     def fetchData(self):
         serviceDocument = etree.XML(self.urlopen_("http://api-fotki.yandex.ru/api/me/").read())
-        nsmap = { 'app' : 'http://www.w3.org/2007/app', 'atom': 'http://www.w3.org/2005/Atom' } 
+        nsmap = { 'app' : 'http://www.w3.org/2007/app', 'atom': 'http://www.w3.org/2005/Atom', 'f' : 'yandex:fotki'} 
         albumXPath = etree.XPath('//app:collection[@id="album-list"]/@href', namespaces = nsmap)
         photoXPath = etree.XPath('//app:collection[@id="photo-list"]/@href', namespaces = nsmap)
+        entriesXPath = etree.XPath('//atom:entry', namespaces = nsmap)
+        selfLinkPath = etree.XPath('atom:link[@rel="self"]/@href', namespaces = nsmap)
+        albumLinkPath = etree.XPath('atom:link[@rel="album"]/@href', namespaces = nsmap)
+        editMediaLinkPath = etree.XPath('atom:link[@rel="edit-media"]/@href', namespaces = nsmap)
+        titlePath = etree.XPath('atom:title/text()', namespaces = nsmap)
+
         albumUrl = albumXPath.evaluate(serviceDocument)[0]
         photoUrl = photoXPath.evaluate(serviceDocument)[0]
 
-        AlbumCollection = feedparser.parse(albumUrl, request_headers = self.AuthHeader)
-        PhotoCollection = feedparser.parse(photoUrl, request_headers = self.AuthHeader)
-        for album in AlbumCollection.entries:
-            AlbumLink = None
-            for link in album.links:
-                if link.rel == "self":
-                    SelfLink = link.href
-                if link.rel == "album":
-                    AlbumLink = link.href
+        AlbumCollection = etree.XML(self.urlopen_(albumUrl).read())
+        PhotoCollection = etree.XML(self.urlopen_(photoUrl).read())
+        for album in entriesXPath.evaluate(AlbumCollection) :
+            SelfLink = selfLinkPath.evaluate(album)[0]
+            AlbumLink = albumLinkPath.evaluate(album)
             if AlbumLink:
+                AlbumLink = AlbumLink[0]
                 if self.Children.get(AlbumLink):
                     self.Children[AlbumLink].append(SelfLink)
                 else:
                     self.Children[AlbumLink] = [SelfLink]
             else:
                 self.Roots.append(SelfLink);
-            self.Entries[SelfLink] = album
-            self.Entries[SelfLink].filetype = 'album'
+            self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(album)[0], 'album')
         
-        for photo in PhotoCollection.entries:
-            AlbumLink = None
-            for link in photo.links:
-                if link.rel == "self":
-                    SelfLink = link.href
-                if link.rel == "album":
-                    AlbumLink = link.href
-                if link.rel == "edit-media":
-                    FileLink = link.href
+        for photo in entriesXPath.evaluate(PhotoCollection):
+            SelfLink = selfLinkPath.evaluate(photo)[0]
+            AlbumLink = albumLinkPath.evaluate(photo)[0]
+            FileLink = editMediaLinkPath.evaluate(photo)[0]
+
             if self.Children.get(AlbumLink):
                 self.Children[AlbumLink].append(SelfLink)
             else:
                 self.Children[AlbumLink] = [SelfLink]
-            self.Entries[SelfLink] = photo
-            self.Entries[SelfLink].filetype = 'photo'
-            self.Entries[SelfLink].fileLink = FileLink
+            self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(photo)[0], 'photo', FileLink)
                 
     def growTree(self):
         for Root in self.Roots:

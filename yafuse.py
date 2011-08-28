@@ -73,11 +73,11 @@ class NullFS(Fuse):
 	filetype = self.struct.FileType(path.split('/'))
 
 	if filetype  == 'album':
-		mode = stat.S_IFDIR | 0755
+		mode = stat.S_IFDIR | 0555
 		fileSize = 4096
 	else:
 		fileSize = self.struct.GetFileSize(path.split('/'))
-		mode = stat.S_IFREG | 0755
+		mode = stat.S_IFREG | 0555
 
 	print filetype
 	
