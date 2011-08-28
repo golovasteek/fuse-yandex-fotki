@@ -8,6 +8,8 @@ import errno
 import urllib2
 import os
 import tempfile
+import datetime
+from time import time
 
 
 class TreeEntry:
@@ -18,13 +20,17 @@ class TreeEntry:
         self.fileLink = None
         self.localFile = None
         self.Children = {}
+        self.time = {}
 
 class CollectionEntry:
     def __init__(self, title, filetype, photolink = None):
         self.title = title
         self.filetype = filetype
         self.fileLink = photolink
-        
+        self.time = {}
+
+def dateFromAtom(datestr):
+    return datetime.datetime.strptime(datestr, "%Y-%m-%dT%H:%M:%SZ")
 
 class AlbumStruct:
     def __init__(self):
@@ -33,6 +39,9 @@ class AlbumStruct:
         self.Entries = {}
         self.Links = {}
         self.Tree = TreeEntry(None, 'album')
+        self.Tree.time['access'] = datetime.datetime.now()
+        self.Tree.time['modify'] = self.Tree.time['access']
+        self.Tree.time['create'] = self.Tree.time['access']
         if oauth.Token:
             self.AuthHeader = {'Authorization': 'OAuth ' + oauth.Token}
         else:
@@ -55,6 +64,9 @@ class AlbumStruct:
         albumLinkPath = etree.XPath('atom:link[@rel="album"]/@href', namespaces = nsmap)
         editMediaLinkPath = etree.XPath('atom:link[@rel="edit-media"]/@href', namespaces = nsmap)
         titlePath = etree.XPath('atom:title/text()', namespaces = nsmap)
+        publishedPath = etree.XPath('atom:published/text()', namespaces = nsmap)
+        editedPath = etree.XPath('app:edited/text()', namespaces = nsmap)
+        updatedPath = etree.XPath('atom:updated/text()', namespaces = nsmap)
 
         albumUrl = albumXPath.evaluate(serviceDocument)[0]
         photoUrl = photoXPath.evaluate(serviceDocument)[0]
@@ -73,6 +85,9 @@ class AlbumStruct:
             else:
                 self.Roots.append(SelfLink);
             self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(album)[0], 'album')
+            self.Entries[SelfLink].time['create'] = dateFromAtom(publishedPath.evaluate(album)[0])
+            self.Entries[SelfLink].time['modify'] = dateFromAtom(editedPath.evaluate(album)[0])
+            self.Entries[SelfLink].time['access'] = dateFromAtom(updatedPath.evaluate(album)[0])
         
         for photo in entriesXPath.evaluate(PhotoCollection):
             SelfLink = selfLinkPath.evaluate(photo)[0]
@@ -84,12 +99,16 @@ class AlbumStruct:
             else:
                 self.Children[AlbumLink] = [SelfLink]
             self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(photo)[0], 'photo', FileLink)
+            self.Entries[SelfLink].time['create'] = dateFromAtom(publishedPath.evaluate(photo)[0])
+            self.Entries[SelfLink].time['modify'] = dateFromAtom(editedPath.evaluate(photo)[0])
+            self.Entries[SelfLink].time['access'] = dateFromAtom(updatedPath.evaluate(photo)[0])
                 
     def growTree(self):
         for Root in self.Roots:
             entry = self.Entries[Root]
             title = entry.title.encode('utf-8')
             self.Tree.Children[title] = TreeEntry(Root, 'album')
+            self.Tree.Children[title].time = entry.time
             self.AddChildren(Root, self.Tree.Children[title].Children)
     
 
@@ -98,6 +117,7 @@ class AlbumStruct:
             entry = self.Entries[Child]
             title = entry.title.encode('utf-8')
             Children[title] = TreeEntry(Child, entry.filetype)
+            Children[title].time = entry.time
             if entry.filetype == 'photo':
                 Children[title].fileLink = entry.fileLink
 
@@ -153,3 +173,13 @@ class AlbumStruct:
             u = self.urlopen_(entry.fileLink)
             entry.size = int(u.info().getheader('Content-Length'))
         return entry.size
+
+    def GetTime(self, path, element):
+        entry = self._getEntry(path)
+        try:
+            result =  entry.time[element].strftime("%s")
+            if result:
+                return int(result)
+        finally:
+            int(time())
+            

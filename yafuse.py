@@ -3,8 +3,6 @@
 import fuse
 from fuse import Fuse
 
-from time import time
-
 import stat    # for file properties
 import os      # for filesystem modes (O_RDONLY, etc)
 import errno   # for error number codes (ENOENT, etc)
@@ -46,7 +44,7 @@ class NullFS(Fuse):
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
 
-	self.struct = yaapi.AlbumStruct()
+        self.struct = yaapi.AlbumStruct()
 
         print 'Init complete.'
 
@@ -69,23 +67,27 @@ class NullFS(Fuse):
 
 #        depth = getDepth(path) # depth of path, zero-based from root
 #        pathparts = getParts(path) # the actual parts of the path
-	curtime = int(time())
-	filetype = self.struct.FileType(path.split('/'))
+        pathList = path.split('/')
+        filetype = self.struct.FileType(pathList)
 
-	if filetype  == 'album':
-		mode = stat.S_IFDIR | 0555
-		fileSize = 4096
-	else:
-		fileSize = self.struct.GetFileSize(path.split('/'))
-		mode = stat.S_IFREG | 0555
+        if filetype  == 'album':
+            mode = stat.S_IFDIR | 0555
+            fileSize = 4096
+        else:
+            fileSize = self.struct.GetFileSize(pathList)
+            mode = stat.S_IFREG | 0555
 
-	print filetype
-	
-	st = fuse.Stat(st_mode = mode, st_nlink = 2, st_uid = 1000,
-		st_gid = 1000, st_size = fileSize, st_atime = curtime,
-		st_mtime = curtime, st_ctime = curtime)
-	return st
-#	return os.lstat(".")
+        print filetype
+        atime = self.struct.GetTime(pathList, 'access')
+        mtime = self.struct.GetTime(pathList, 'modify')
+        ctime = self.struct.GetTime(pathList, 'create')
+        print atime, mtime, ctime
+
+        st = fuse.Stat(st_mode = mode, st_nlink = 2, st_uid = 1000,
+            st_gid = 1000, st_size = fileSize, st_atime = atime,
+            st_mtime = mtime, st_ctime = ctime)
+        return st
+#   return os.lstat(".")
 
     def readdir(self, path, offset):
         """
@@ -93,11 +95,11 @@ class NullFS(Fuse):
         """
 
         print '*** readdir %s' % path
-	result = ['.', '..']
-	result.extend(self.struct.Dir(path.split('/')))
+        result = ['.', '..']
+        result.extend(self.struct.Dir(path.split('/')))
 
-	for e in result:
-		yield fuse.Direntry(e)
+        for e in result:
+            yield fuse.Direntry(e)
 
     def mythread ( self ):
         print '*** mythread'
@@ -130,12 +132,12 @@ class NullFS(Fuse):
     def open ( self, path, flags ):
         print '*** open', path, flags
         #return -errno.ENOSYS
-	return fuse.FuseFileInfo()
+        return fuse.FuseFileInfo()
 
     def read ( self, path, length, offset ):
         print '*** read', path, length, offset
         #return -errno.ENOSYS
-	return self.struct.ReadFile(path.split('/'), length, offset)
+        return self.struct.ReadFile(path.split('/'), length, offset)
 
     def readlink ( self, path ):
         print '*** readlink', path
