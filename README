@@ -1,1 +1,32 @@
 Simple utils for mounting yandex-fotki with fuse
+
+This programm is not instalable now.
+To run this programm next python modules needed:
+not standart:
+    fuse
+    feedparser (version >= 5)
+    lxml
+    urllib2
+
+standart:
+    time
+    sys
+    os
+    exceptions
+    errno
+    tempfile
+
+Additionaly needed PyQt4 module for showing browser window for authorization.
+If you havn't this module you can visit:
+   https://oauth.yandex.ru/authorize?response_type=code&client_id=1141f78aa9854d91be6afbdcb338e76f
+
+confirm access to your albums and then recieve authorization token in JSON format.
+Then copy token (only token value) from json file and write it to ~/.fuse-yandex-fotki/token without new lines.
+
+Usage.
+For mount:
+./yafuse.py [-d] <mount point>
+    -d  Enable lot of debug output, and do not demonize
+
+For umoutn:
+fusermount -u <mount point>
