@@ -77,11 +77,9 @@ class NullFS(Fuse):
             fileSize = self.struct.GetFileSize(pathList)
             mode = stat.S_IFREG | 0555
 
-        print filetype
         atime = self.struct.GetTime(pathList, 'access')
         mtime = self.struct.GetTime(pathList, 'modify')
         ctime = self.struct.GetTime(pathList, 'create')
-        print atime, mtime, ctime
 
         st = fuse.Stat(st_mode = mode, st_nlink = 2, st_uid = 1000,
             st_gid = 1000, st_size = fileSize, st_atime = atime,

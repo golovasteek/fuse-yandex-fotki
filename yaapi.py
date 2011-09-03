@@ -11,6 +11,18 @@ import tempfile
 import datetime
 from time import time
 
+nsmap = { 'app' : 'http://www.w3.org/2007/app', 'atom': 'http://www.w3.org/2005/Atom', 'f' : 'yandex:fotki'} 
+albumXPath = etree.XPath('//app:collection[@id="album-list"]/@href', namespaces = nsmap)
+photoXPath = etree.XPath('//app:collection[@id="photo-list"]/@href', namespaces = nsmap)
+entriesXPath = etree.XPath('//atom:entry', namespaces = nsmap)
+selfLinkPath = etree.XPath('atom:link[@rel="self"]/@href', namespaces = nsmap)
+albumLinkPath = etree.XPath('atom:link[@rel="album"]/@href', namespaces = nsmap)
+editMediaLinkPath = etree.XPath('atom:link[@rel="edit-media"]/@href', namespaces = nsmap)
+titlePath = etree.XPath('atom:title/text()', namespaces = nsmap)
+publishedPath = etree.XPath('atom:published/text()', namespaces = nsmap)
+editedPath = etree.XPath('app:edited/text()', namespaces = nsmap)
+updatedPath = etree.XPath('atom:updated/text()', namespaces = nsmap)
+nextPagePath = etree.XPath('/atom:feed/atom:link[@rel="next"]/@href', namespaces = nsmap)
 
 class TreeEntry:
     def __init__(self, link, filetype):
@@ -46,7 +58,6 @@ class AlbumStruct:
             self.AuthHeader = {'Authorization': 'OAuth ' + oauth.Token}
         else:
             self.AuthHeader = {}
-        print self.AuthHeader
 #       self.BaseUrl = "http://localhost"
         self.fetchData()
         self.growTree()
@@ -56,26 +67,25 @@ class AlbumStruct:
 
     def fetchData(self):
         serviceDocument = etree.XML(self.urlopen_("http://api-fotki.yandex.ru/api/me/").read())
-        nsmap = { 'app' : 'http://www.w3.org/2007/app', 'atom': 'http://www.w3.org/2005/Atom', 'f' : 'yandex:fotki'} 
-        albumXPath = etree.XPath('//app:collection[@id="album-list"]/@href', namespaces = nsmap)
-        photoXPath = etree.XPath('//app:collection[@id="photo-list"]/@href', namespaces = nsmap)
-        entriesXPath = etree.XPath('//atom:entry', namespaces = nsmap)
-        selfLinkPath = etree.XPath('atom:link[@rel="self"]/@href', namespaces = nsmap)
-        albumLinkPath = etree.XPath('atom:link[@rel="album"]/@href', namespaces = nsmap)
-        editMediaLinkPath = etree.XPath('atom:link[@rel="edit-media"]/@href', namespaces = nsmap)
-        titlePath = etree.XPath('atom:title/text()', namespaces = nsmap)
-        publishedPath = etree.XPath('atom:published/text()', namespaces = nsmap)
-        editedPath = etree.XPath('app:edited/text()', namespaces = nsmap)
-        updatedPath = etree.XPath('atom:updated/text()', namespaces = nsmap)
 
         albumUrl = albumXPath.evaluate(serviceDocument)[0]
         photoUrl = photoXPath.evaluate(serviceDocument)[0]
 
-        AlbumCollection = etree.XML(self.urlopen_(albumUrl).read())
-        PhotoCollection = etree.XML(self.urlopen_(photoUrl).read())
-        for album in entriesXPath.evaluate(AlbumCollection) :
-            SelfLink = selfLinkPath.evaluate(album)[0]
-            AlbumLink = albumLinkPath.evaluate(album)
+        self.fetchCollection(albumUrl)
+        self.fetchCollection(photoUrl)
+
+    def fetchCollection(self, startUrl):
+        url = startUrl
+        while url:
+            print "Fetching: ", url
+            collection = etree.XML(self.urlopen_(url).read())
+            url = self.parseCollectionPage(collection)
+
+
+    def parseCollectionPage(self, collection):
+        for entry in entriesXPath.evaluate(collection):
+            SelfLink = selfLinkPath.evaluate(entry)[0]
+            AlbumLink = albumLinkPath.evaluate(entry)
             if AlbumLink:
                 AlbumLink = AlbumLink[0]
                 if self.Children.get(AlbumLink):
@@ -84,24 +94,22 @@ class AlbumStruct:
                     self.Children[AlbumLink] = [SelfLink]
             else:
                 self.Roots.append(SelfLink);
-            self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(album)[0], 'album')
-            self.Entries[SelfLink].time['create'] = dateFromAtom(publishedPath.evaluate(album)[0])
-            self.Entries[SelfLink].time['modify'] = dateFromAtom(editedPath.evaluate(album)[0])
-            self.Entries[SelfLink].time['access'] = dateFromAtom(updatedPath.evaluate(album)[0])
-        
-        for photo in entriesXPath.evaluate(PhotoCollection):
-            SelfLink = selfLinkPath.evaluate(photo)[0]
-            AlbumLink = albumLinkPath.evaluate(photo)[0]
-            FileLink = editMediaLinkPath.evaluate(photo)[0]
 
-            if self.Children.get(AlbumLink):
-                self.Children[AlbumLink].append(SelfLink)
+            PhotoLink = editMediaLinkPath.evaluate(entry)
+            if PhotoLink:
+                self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(entry)[0], 'photo', PhotoLink[0])
             else:
-                self.Children[AlbumLink] = [SelfLink]
-            self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(photo)[0], 'photo', FileLink)
-            self.Entries[SelfLink].time['create'] = dateFromAtom(publishedPath.evaluate(photo)[0])
-            self.Entries[SelfLink].time['modify'] = dateFromAtom(editedPath.evaluate(photo)[0])
-            self.Entries[SelfLink].time['access'] = dateFromAtom(updatedPath.evaluate(photo)[0])
+                self.Entries[SelfLink] = CollectionEntry(titlePath.evaluate(entry)[0], 'album')
+
+            self.Entries[SelfLink].time['create'] = dateFromAtom(publishedPath.evaluate(entry)[0])
+            self.Entries[SelfLink].time['modify'] = dateFromAtom(editedPath.evaluate(entry)[0])
+            self.Entries[SelfLink].time['access'] = dateFromAtom(updatedPath.evaluate(entry)[0])
+
+        nextPage = nextPagePath.evaluate(collection)
+        if nextPage:
+            return nextPage[0]
+        else:
+            return None
                 
     def growTree(self):
         for Root in self.Roots:
@@ -182,4 +190,3 @@ class AlbumStruct:
                 return int(result)
         finally:
             int(time())
-            
